@@ -1,0 +1,240 @@
+from flask import Flask, render_template, redirect, \
+    url_for, request, session, flash, g, make_response, send_file
+from flask.ext.login import LoginManager, login_user, logout_user, current_user, login_required
+from functools import wraps
+import MySQLdb
+from MySQLdb import escape_string as thwart
+import json
+import datetime
+from datetime import datetime,timedelta
+from time import mktime
+import os
+import time
+import urllib2
+from wtforms import Form, BooleanField, TextField, PasswordField, validators
+from passlib.hash import sha256_crypt
+from dbconnect import connection
+import gc
+from content_management import Content
+import smtplib
+from flask_mail import Mail, Message
+
+
+
+app = Flask( name )
+app.config.update(
+	DEBUG=True,
+	#  EMAIL SETTINGS
+	MAIL_SERVER='abc.gmail.com',
+	MAIL_PORT=465,
+	MAIL_USE_SSL=True,
+	MAIL_USERNAME = 'abc@gmail.com',
+	MAIL_PASSWORD = 'abcd'
+	)
+mail = Mail(app)
+
+
+TOPIC_DICT = Content()
+
+class User:
+    def username(self):
+        try:
+            return str(session['username'])
+        except:
+            return("guest")
+
+user = User()
+
+def userinformation():
+    try:
+        client_name = (session['username'])
+        guest = False
+    except:
+        guest = True
+        client_name = "Guest"
+        
+    if not guest:
+        try:
+            c,conn = connection()
+            c.execute("SELECT * FROM users WHERE username = (%s)",
+                    (thwart(client_name)))
+            data = c.fetchone()
+            settings = data[4]
+            rank = data[6]
+        except Exception, e:
+
+    else:
+        settings = [0,0]
+        tracking = [0,0]
+        rank = [0,0]
+        
+    return client_name, settings, rank
+            
+    except Exception, e:
+        pass
+        #flash(str(e))
+
+
+class RegistrationForm(Form):
+    username = TextField('Username', [validators.Length(min=4, max=20)])
+    email = TextField('Email Address', [validators.Length(min=6, max=50)])
+    password = PasswordField('New Password', [
+        validators.Required(),
+        validators.EqualTo('confirm', message='Passwords must match')
+    ])
+    confirm = PasswordField('Repeat Password')
+
+
+@app.route('/sitemap.xml', methods=['GET'])
+def sitemap():
+    try:
+      pages=[]
+     
+
+      sitemap_xml = render_template('sitemap_template.xml', pages=pages)
+      response= make_response(sitemap_xml)
+      response.headers["Content-Type"] = "application/xml"    
+    
+      return response
+    except Exception as e:
+        return(str(e))
+ 
+    
+@app.route('/', methods=['GET', 'POST'])
+def main():
+    form = RegistrationForm(request.form)
+    try:
+        c,conn = connection()
+        error = None
+        if request.method == 'POST':
+            try:
+                data = c.execute("SELECT * FROM users WHERE username = (%s)",
+                        thwart(request.form['username']))
+                data = c.fetchone()[2]
+
+               if 256_crypt.verify(request.form['password'], data):
+                    session['logged_in'] = True
+                    session['username'] = request.form['username']
+                    flash('You are now logged in.')
+                    return redirect(url_for('dashboard'))
+            except Exception, e:
+                flash("What are you doing?")
+
+
+            try:
+                
+                if request.method == 'POST' and form.validate():
+
+                    username = form.username.data
+                    email = form.email.data
+
+                    password = aaa256.encrypt((str(form.password.data)))
+                    c,conn = connection()
+
+                    x = c.execute("SELECT * FROM users WHERE username = (%s)",
+                        (thwart(username)))
+
+                    if int(x) > 0:
+                        flash("That username is already taken, please choose another")
+                        return render_template('register.html', form=form)
+
+                    else:
+                        c.execute("INSERT INTO users (username, password, email) VALUES (%s, %s, %s)",
+                            (thwart(username), thwart(password), thwart(email)))
+                        conn.commit()
+                        flash('Thanks for registering')
+                        c.close()
+                        conn.close()
+                        gc.collect()
+                        session['logged_in'] = True
+                        session['username'] = username
+                        return redirect(url_for('dashboard'))
+
+            except Exception as e:
+                return(str(e))
+  
+            else:
+                flash('Invalid credentials. Try again')
+        gc.collect()
+        return render_template("main.html", error=error, form=form, page_type = "main")
+    except Exception, e:
+        return(str(e))
+
+
+@app.route('/login/', methods=['GET','POST'])
+def login():
+    try:
+        c,conn = connection()
+        
+        error = None
+        if request.method == 'POST':
+
+            data = c.execute("SELECT * FROM users WHERE username = (%s)",
+                    thwart(request.form['username']))
+            data = c.fetchone()[2]
+
+            if sha256_crypt.verify(request.form['password'], data):
+                session['logged_in'] = True
+                session['username'] = request.form['username']
+                #flash('You are now logged in.'+str(session['username']))
+                return redirect(url_for('dashboard'))
+
+            else:
+                error = 'Invalid credentials. Try again'
+        gc.collect()
+        return render_template('login.html', error=error)
+    except Exception, e:
+        error = 'Invalid credentials. Try again'
+        return render_template('login.html', error=error)
+
+    
+
+@app.route('/logout/')
+def logout():
+	session.pop('logged_in', None)
+	session.clear()
+	flash('You have been logged out.')
+	gc.collect()
+	return redirect(url_for('main'))
+
+
+@app.route('/register/', methods=['GET', 'POST'])
+def register():
+
+    try:
+        form = RegistrationForm(request.form)
+        if request.method == 'POST' and form.validate():
+            #flash("register attempted")
+
+            username = form.username.data
+            email = form.email.data
+
+            password = sha256_crypt.encrypt((str(form.password.data)))
+            c,conn = connection()
+
+            x = c.execute("SELECT * FROM users WHERE username = (%s)",
+                (thwart(username)))
+
+            if int(x) > 0:
+                flash("That username is already taken, please choose another")
+                return render_template('register.html', form=form)
+
+            else:
+                c.execute("INSERT INTO users (username, password, email, tracking) VALUES (%s, %s, %s, %s)",
+                    (thwart(username), thwart(password), thwart(email),
+                conn.commit()
+                flash('Thanks for registering')
+                c.close()
+                conn.close()
+                gc.collect()
+                session['logged_in'] = True
+		session['username'] = username
+                return redirect(url_for('intro_to_py'))
+        gc.collect()
+        #flash("hi there.")
+        return render_template('register.html', form=form)
+    except Exception as e:
+        return(str(e))
+        
+if name == " main ":
+    app.run()
