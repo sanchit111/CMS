@@ -1,0 +1,26 @@
+##// list of topics by {TOPIC:[["TITLE", "URL"]]}
+
+def Content():
+
+    TOPIC_DICT = {"Topic name will be mentioned here":[["Title will be mentioned here","/URL will be given here/",[""]],
+                   
+                   
+                          # All topics, their titles and URL's will be mentioned in the above syntax.              
+                                 
+                                
+                                ],
+
+                  
+                            }
+
+
+    return TOPIC_DICT
+
+
+if  name  == " main ":
+    x = Content()
+
+    print(x["Basics"])
+
+    for each in x["Basics"]:
+        print(each[1])
